@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Email Verification</title>
+        <style>
+            /* Add your styles here */
+            body {
+                font-family: 'Arial', sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #f4f4f4;
+            }
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #ffffff;
+                border-radius: 10px;
+                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+                background-color: #3498db;
+                color: #ffffff;
+                text-align: center;
+                padding: 10px;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+            }
+            .footer {
+                background-color: #3498db;
+                color: #ffffff;
+                text-align: center;
+                padding: 10px;
+                border-bottom-left-radius: 10px;
+                border-bottom-right-radius: 10px;
+                margin-top: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2>Welcome to Our Platform!</h2>
+            </div>
+            <div class="content">
+                <p>
+                    Hello, <strong><%= name %></strong>! Thank you for joining
+                    the platform.
+                </p>
+                <p>
+                    Use this pin token <strong><%= pin %></strong> to verify
+                    your account with us.
+                </p>
+                <p>Thank you!</p>
+            </div>
+            <div class="footer">
+                <p>Contact us at support@numistics.com</p>
+                <p>Copyright &copy; 2023 Numistics. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+</html>
