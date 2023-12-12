@@ -15,10 +15,10 @@ const sellerAuth = async (req, res, next) => {
     try {
         const authUser = await validateToken(token);
 
-        if (!authUser) {
+        if (!authUser || authUser == "jwt expired") {
             return res.status(400).json({
                 status: 400,
-                message: "invalid user",
+                message: "invalid token",
                 data: null,
             });
         }

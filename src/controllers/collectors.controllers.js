@@ -14,6 +14,10 @@ import {
     serverError,
 } from "../utils/response.handler.js";
 import FavouritesModel from "../models/favourites.model.js";
+import axios from "axios";
+import { countryToAlpha3 } from "country-to-iso";
+import usersModel from "../models/users.model.js";
+import photoUploader from "../utils/photoUploader.js";
 
 export const collectorSignUp = async (req, res) => {
     try {
@@ -71,6 +75,8 @@ export const collectorSignUp = async (req, res) => {
             );
         }
 
+        const iso = countryToAlpha3(country.toLowerCase());
+
         const pin = Number(authCode(6));
 
         const newUser = new UsersModel({
@@ -82,6 +88,7 @@ export const collectorSignUp = async (req, res) => {
             mobile: mobile,
             about: about,
             country: country,
+            iso_code: iso,
             role: "collector",
             auth_code: pin,
         });
@@ -378,23 +385,53 @@ export const logOut = async (req, res) => {
 /**
  * get items, get item
  */
+async function convertCurrency(currency, pcurrency, price) {
+    try {
+        // const xrate = await axios.get(`https://data.fixer.io/api/convert
+        //     ? access_key = ${process.env.FIXER_API_KEY}
+        //     & from = ${currency}
+        //     & to = ${pcurrency}
+        //     & amount = ${price}`);
+
+        // console.log(currency, pcurrency, price);
+
+        const { data } = await axios(
+            `https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/${currency}/${pcurrency}.json`
+        );
+
+        const xrate = Object.values(data);
+
+        return Number(xrate[1]) * price;
+    } catch (error) {
+        console.log(error.message);
+    }
+}
+
 export const getItems = async (req, res) => {
     try {
-        const ip = req.ip || req.connection.remoteAddress;
-        const uinfo = await userInfo("194.112.5.89");
-        // console.log(uinfo);
+        const ip = req.ip || req.socket.remoteAddress;
+        const uinfo = await userInfo(ip); //"212.113.115.165"
+        console.log(uinfo, ip);
 
-        const limit = req.params.limit;
-        const page = req.params.page;
+        const limit = req.query.limit;
+        const page = req.query.page;
 
-        let country = req?.params.country;
+        let country = req?.query.country
+            ? req?.query.country
+            : uinfo.country_name;
+
+        let categ = req?.query.category ? req?.query.category : false;
+
         country = country?.toLowerCase();
 
-        let items = [];
+        const userPreferredCurrency = uinfo.currency.toLowerCase();
 
+        let items = [];
         let apage = [];
 
-        if (country) {
+        const rate = await convertCurrency("usd", userPreferredCurrency, 1);
+
+        if (!categ) {
             items = await ItemsModel.aggregate([
                 {
                     $match: {
@@ -409,15 +446,62 @@ export const getItems = async (req, res) => {
                     },
                 },
                 {
+                    $addFields: {
+                        convertedPrice: {
+                            $cond: {
+                                if: {
+                                    $eq: ["$currency", userPreferredCurrency],
+                                },
+                                then: "$price",
+                                else: {
+                                    // $function: {
+                                    //     body: async function (
+                                    //         currency,
+                                    //         userPreferredCurrency,
+                                    //         price
+                                    //     ) {
+                                    //         console.log(
+                                    //             currency,
+                                    //             userPreferredCurrency,
+                                    //             price
+                                    //         );
+
+                                    //         const { data } = await axios(
+                                    //             `https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/${currency.toLowerCase}/${userPreferredCurrency.toLowerCase}.json`
+                                    //         );
+
+                                    //         const xrate = Object.values(data);
+
+                                    //         return Number(xrate[1]) * price;
+                                    //     },
+                                    //     args: [
+                                    //         "$currency",
+                                    //         "userPreferredCurrency",
+                                    //         "$price",
+                                    //     ],
+                                    //     lang: "js",
+                                    // },
+                                    $multiply: ["$price", rate],
+                                },
+                            },
+                        },
+                    },
+                },
+                {
+                    $addFields: {
+                        convertedCurrency: userPreferredCurrency,
+                    },
+                },
+                {
                     $sort: {
                         createdAt: -1,
                     },
                 },
                 {
-                    $limit: Number(limit) || 20,
+                    $skip: (Number(page) - 1) * Number(limit) || 0,
                 },
                 {
-                    $skip: Number(Number(page) - 1) * Number(limit) || 0,
+                    $limit: Number(limit) || 20,
                 },
             ]);
 
@@ -432,13 +516,11 @@ export const getItems = async (req, res) => {
                 },
             ]);
         } else {
-            let country_nam = uinfo.country_name;
-            country_nam = country_nam.toLowerCase;
-
             items = await ItemsModel.aggregate([
                 {
                     $match: {
-                        country: country_nam,
+                        country: country,
+                        category: categ,
                     },
                 },
                 {
@@ -449,22 +531,52 @@ export const getItems = async (req, res) => {
                     },
                 },
                 {
+                    $addFields: {
+                        convertedPrice: {
+                            $cond: {
+                                if: {
+                                    $eq: ["$currency", userPreferredCurrency],
+                                },
+                                then: "$price",
+                                else: {
+                                    // $function: {
+                                    //     body: convertCurrency().toString(),
+                                    //     args: [
+                                    //         "$currency",
+                                    //         userPreferredCurrency,
+                                    //         "$price",
+                                    //     ],
+                                    //     lang: "js",
+                                    // },
+                                    $multiply: ["$price", rate],
+                                },
+                            },
+                        },
+                    },
+                },
+                {
+                    $addFields: {
+                        convertedCurrency: userPreferredCurrency,
+                    },
+                },
+                {
                     $sort: {
                         createdAt: -1,
                     },
                 },
                 {
-                    $limit: Number(limit) || 20,
+                    $skip: (Number(page) - 1) * Number(limit) || 0,
                 },
                 {
-                    $skip: Number(Number(page) - 1) * Number(limit) || 0,
+                    $limit: Number(limit) || 20,
                 },
             ]);
 
             apage = await ItemsModel.aggregate([
                 {
                     $match: {
-                        country: country_nam,
+                        country: country,
+                        category: categ,
                     },
                 },
                 {
@@ -491,7 +603,20 @@ export const getItems = async (req, res) => {
 
 export const getItem = async (req, res) => {
     try {
-        const sellers = await ItemsModel.aggregate([
+        const item = await ItemsModel.findOne({ _id: req.params.id });
+
+        const ip = req.ip || req.socket.remoteAddress;
+        const uinfo = await userInfo(ip); //"212.113.115.165"
+
+        const userPreferredCurrency = uinfo.currency.toLowerCase();
+
+        const rate = await convertCurrency(
+            item.currency.toLowerCase(),
+            userPreferredCurrency,
+            1
+        );
+
+        const items = await ItemsModel.aggregate([
             {
                 $match: {
                     _id: new mongoose.Types.ObjectId(req.params.id),
@@ -500,6 +625,26 @@ export const getItem = async (req, res) => {
             {
                 $project: {
                     __v: 0,
+                },
+            },
+            {
+                $addFields: {
+                    convertedPrice: {
+                        $cond: {
+                            if: {
+                                $eq: ["$currency", userPreferredCurrency],
+                            },
+                            then: "$price",
+                            else: {
+                                $multiply: ["$price", rate],
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    convertedCurrency: userPreferredCurrency,
                 },
             },
             {
@@ -553,7 +698,7 @@ export const getItem = async (req, res) => {
         return successResponse(
             res,
             200,
-            sellers,
+            items,
             "one item data with details fetched"
         );
     } catch (error) {
@@ -570,10 +715,19 @@ export const getSellers = async (req, res) => {
         const limit = req.params.limit;
         const page = req.params.page;
 
+        const ip = req.ip || req.socket.remoteAddress;
+        const uinfo = await userInfo(ip); //"212.113.115.165"
+        // console.log(uinfo);
+
+        let country = req?.query.country
+            ? req?.query.country
+            : uinfo.country_name;
+
         const sellers = await SellersModel.aggregate([
             {
                 $match: {
                     role: "seller",
+                    country: country,
                 },
             },
             {
@@ -589,10 +743,10 @@ export const getSellers = async (req, res) => {
                 },
             },
             {
-                $limit: Number(limit) || 20,
+                $skip: Number(Number(page) - 1) * Number(limit) || 0,
             },
             {
-                $skip: Number(Number(page) - 1) * Number(limit) || 0,
+                $limit: Number(limit) || 20,
             },
         ]);
 
@@ -658,8 +812,16 @@ export const getSeller = async (req, res) => {
                                 description: 1,
                             },
                         },
+                        {
+                            $sort: {
+                                createdAt: 1,
+                            },
+                        },
+                        {
+                            $limit: 6,
+                        },
                     ],
-                    as: "seller_items",
+                    as: "seller_featured_items",
                 },
             },
         ]);
@@ -670,11 +832,150 @@ export const getSeller = async (req, res) => {
     }
 };
 
+export const sellerItems = async (req, res) => {
+    try {
+        const seller = req.params.id;
+
+        const items = await ItemsModel.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $eq: [
+                            "$seller_id",
+                            {
+                                $toObjectId: seller,
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                $sort: {
+                    createdAt: -1,
+                },
+            },
+            {
+                $limit: 12,
+            },
+        ]);
+
+        return successResponse(res, 200, items, "seller items fetched");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+export const sellerItemsCateg = async (req, res) => {
+    try {
+        const seller = req.params.id;
+
+        const items = await ItemsModel.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $eq: [
+                            "$seller_id",
+                            {
+                                $toObjectId: seller,
+                            },
+                        ],
+                    },
+                },
+            },
+            // {
+            //     $limit: 4,
+            // },
+            {
+                $group: {
+                    _id: "$category",
+                    data: { $push: "$$ROOT" },
+                },
+            },
+        ]);
+
+        return successResponse(res, 200, items, "seller items fetched");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
 //authenticated endpoints
+
+/**
+ * Auth Endpoints
+ * @param {*} req
+ * @param {*} res
+ * @returns
+ */
+
+export const cgetProfile = async (req, res) => {
+    try {
+        const user = req.user;
+        const userDtls = await UsersModel.aggregate([
+            {
+                $match: {
+                    _id: user._id,
+                },
+            },
+            {
+                $project: {
+                    password: 0,
+                    auth_code: 0,
+                    __v: 0,
+                },
+            },
+        ]);
+
+        return successResponse(res, 200, userDtls[0], "seller details");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const cupdateProfile = async (req, res) => {
+    try {
+        const { first_name, last_name, country_code, mobile, about, country } =
+            req.body;
+
+        const user = req.user;
+
+        const profilePix = await photoUploader(
+            req,
+            "profile_photo",
+            `profile/${user.email}`
+        );
+
+        const seller = await UsersModel.findOne({
+            _id: user._id,
+        });
+
+        await UsersModel.findOneAndUpdate(
+            {
+                _id: user._id,
+            },
+            {
+                first_name: first_name,
+                last_name: last_name,
+                country_code: country_code,
+                mobile: mobile,
+                about: about,
+                country: country,
+                photo: profilePix === false ? seller.photo : profilePix,
+            },
+            {
+                upsert: true,
+            }
+        );
+
+        return successResponse(res, 200, null, "seller profile updated");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
 
 export const addFavourite = async (req, res) => {
     try {
         const { seller_id } = req.body;
+
         const user = req.user;
 
         if (!seller_id) {
@@ -683,6 +984,20 @@ export const addFavourite = async (req, res) => {
                 400,
                 null,
                 "seller_id field is required"
+            );
+        }
+
+        const alreadyExist = await FavouritesModel.findOne({
+            collector_id: user._id,
+            seller_id: seller_id,
+        });
+
+        if (alreadyExist) {
+            return invalidRequest(
+                res,
+                400,
+                null,
+                "seller already in your favourite list"
             );
         }
 
@@ -712,14 +1027,39 @@ export const getFavourite = async (req, res) => {
                     collector_id: user._id,
                 },
             },
+            {
+                $lookup: {
+                    from: "users",
+                    let: {
+                        sid: "$seller_id",
+                    },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: ["$_id", "$$sid"],
+                                },
+                            },
+                        },
+                        {
+                            $project: {
+                                first_name: 1,
+                                last_name: 1,
+                                photo: 1,
+                                email: 1,
+                                country: 1,
+                                country_code: 1,
+                                mobile: 1,
+                                iso_code: 1,
+                            },
+                        },
+                    ],
+                    as: "seller",
+                },
+            },
         ]);
 
-        return successResponse(
-            res,
-            200,
-            fav,
-            "seller added to your favourite list"
-        );
+        return successResponse(res, 200, fav, "favourite sellers list fetched");
     } catch (error) {
         return serverError(res, 500, null, error.message);
     }
@@ -748,7 +1088,7 @@ export const removeFavourite = async (req, res) => {
             res,
             200,
             null,
-            "seller added to your favourite list"
+            "seller removed to your favourite list"
         );
     } catch (error) {
         return serverError(res, 500, null, error.message);

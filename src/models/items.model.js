@@ -21,6 +21,10 @@ const ItemsModel = mongoose.Schema({
         type: String,
         lowercase: true,
     },
+    iso_code: {
+        type: String,
+        required: true,
+    },
     photo1: {
         type: String,
     },

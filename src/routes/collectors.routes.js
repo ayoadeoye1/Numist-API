@@ -1,7 +1,9 @@
 import express from "express";
 import {
     addFavourite,
+    cgetProfile,
     collectorSignUp,
+    cupdateProfile,
     getFavourite,
     getItem,
     getItems,
@@ -11,6 +13,8 @@ import {
     passwordChange,
     passwordChangeCode,
     removeFavourite,
+    sellerItems,
+    sellerItemsCateg,
     signIn,
     verifyEmail,
 } from "../controllers/collectors.controllers.js";
@@ -42,6 +46,10 @@ routerOne.get("/collector/get-sellers", getSellers);
 
 routerOne.get("/collector/get-seller/:id", getSeller);
 
+routerOne.get("/collector/seller-items/:id", sellerItems);
+
+routerOne.get("/collector/seller-items-categ/:id", sellerItemsCateg);
+
 //auth endpoint
 // routerOne.post(
 //     "/general/logout",
@@ -55,5 +63,9 @@ routerOne.post("/collector/add-fav", addFavourite);
 routerOne.get("/collector/get-fav", getFavourite);
 
 routerOne.delete("/collector/rem-fav", removeFavourite);
+
+routerOne.get("/collector/profile/fetch", cgetProfile);
+
+routerOne.put("/collector/profile/update", cupdateProfile);
 
 export default routerOne;

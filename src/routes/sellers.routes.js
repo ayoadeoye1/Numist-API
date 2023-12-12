@@ -4,6 +4,7 @@ import {
     availableOff,
     availableOn,
     getProfile,
+    sellerFavourites,
     sellerItem,
     sellerItems,
     sellerSignUp,
@@ -34,6 +35,8 @@ routerTwo.put("/profile/update", updateProfile);
 routerTwo.post("/available/on", availableOn);
 
 routerTwo.post("/available/off", availableOff);
+
+routerTwo.get("/favourites", sellerFavourites);
 
 //chat pending
 

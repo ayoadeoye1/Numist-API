@@ -5,7 +5,7 @@ export const userInfo = async (ip) => {
 
     try {
         const data = await axios.get(url);
-
+        // console.log(data);
         return {
             ip: data.data.ip,
             city: data.data.city,

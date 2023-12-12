@@ -48,6 +48,9 @@ const UserModel = mongoose.Schema({
     country: {
         type: String,
     },
+    iso_code: {
+        type: String,
+    },
     auth_code: {
         type: Number,
     },

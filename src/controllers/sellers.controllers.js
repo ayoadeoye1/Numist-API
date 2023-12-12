@@ -12,6 +12,8 @@ import {
     invalidRequest,
     serverError,
 } from "../utils/response.handler.js";
+import { countryToAlpha2, countryToAlpha3 } from "country-to-iso";
+import FavouritesModel from "../models/favourites.model.js";
 
 export const sellerSignUp = async (req, res) => {
     try {
@@ -71,6 +73,8 @@ export const sellerSignUp = async (req, res) => {
             );
         }
 
+        const iso = countryToAlpha3(country.toLowerCase());
+
         const pin = Number(authCode(6));
 
         const newUser = new SellersModel({
@@ -83,6 +87,7 @@ export const sellerSignUp = async (req, res) => {
             about: about,
             delivery_option: delivery_option,
             country: country,
+            iso_code: iso,
             role: "seller",
             auth_code: pin,
         });
@@ -259,6 +264,7 @@ export const addItem = async (req, res) => {
             currency: currency,
             price: price,
             country: user.country,
+            iso_code: user?.iso_code,
             category: category,
             photo1: photo1,
             photo2: photo2 || "",
@@ -343,6 +349,53 @@ export const sellerItem = async (req, res) => {
             seller_id: user._id,
             _id: req.params.id,
         });
+
+        return successResponse(res, 200, userItem, "seller details");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const sellerFavourites = async (req, res) => {
+    try {
+        const user = req.user;
+        const userItem = await FavouritesModel.aggregate([
+            {
+                $match: {
+                    seller_id: user._id,
+                },
+            },
+            {
+                $lookup: {
+                    from: "users",
+                    let: {
+                        sid: "$collector_id",
+                    },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: ["$_id", "$$sid"],
+                                },
+                            },
+                        },
+                        {
+                            $project: {
+                                first_name: 1,
+                                last_name: 1,
+                                photo: 1,
+                                email: 1,
+                                country: 1,
+                                country_code: 1,
+                                mobile: 1,
+                                iso_code: 1,
+                            },
+                        },
+                    ],
+                    as: "seller",
+                },
+            },
+        ]);
 
         return successResponse(res, 200, userItem, "seller details");
     } catch (error) {
