@@ -45,7 +45,7 @@ export const sellerSignUp = async (req, res) => {
             return invalidRequest(res, 400, req.body, "all input are required");
         }
 
-        const userExist = await UsersModel.findOne({
+        const userExist = await SellersModel.findOne({
             email: email,
         });
 
@@ -73,7 +73,7 @@ export const sellerSignUp = async (req, res) => {
             );
         }
 
-        const iso = countryToAlpha3(country.toLowerCase());
+        const iso = countryToAlpha2(country.toLowerCase());
 
         const pin = Number(authCode(6));
 

@@ -15,7 +15,7 @@ import {
 } from "../utils/response.handler.js";
 import FavouritesModel from "../models/favourites.model.js";
 import axios from "axios";
-import { countryToAlpha3 } from "country-to-iso";
+import { countryToAlpha2 } from "country-to-iso";
 import usersModel from "../models/users.model.js";
 import photoUploader from "../utils/photoUploader.js";
 
@@ -75,7 +75,7 @@ export const collectorSignUp = async (req, res) => {
             );
         }
 
-        const iso = countryToAlpha3(country.toLowerCase());
+        const iso = countryToAlpha2(country.toLowerCase());
 
         const pin = Number(authCode(6));
 
@@ -189,6 +189,7 @@ export const signIn = async (req, res) => {
             201,
             {
                 email: userExist.email,
+                role: userExist.role,
                 token: token,
             },
             "Sign In successful"
@@ -440,9 +441,33 @@ export const getItems = async (req, res) => {
                 },
                 {
                     $project: {
-                        about: 0,
+                        // about: 0,
                         delivery_options: 0,
                         password: 0,
+                    },
+                },
+                {
+                    $lookup: {
+                        from: "users",
+                        let: {
+                            sid: "$seller_id",
+                        },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $eq: ["$_id", { $toObjectId: "$$sid" }],
+                                    },
+                                },
+                            },
+                            {
+                                $project: {
+                                    first_name: 1,
+                                    last_name: 1,
+                                },
+                            },
+                        ],
+                        as: "seller_info",
                     },
                 },
                 {
@@ -525,9 +550,33 @@ export const getItems = async (req, res) => {
                 },
                 {
                     $project: {
-                        about: 0,
+                        // about: 0,
                         delivery_options: 0,
                         password: 0,
+                    },
+                },
+                {
+                    $lookup: {
+                        from: "users",
+                        let: {
+                            sid: "$seller_id",
+                        },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $eq: ["$_id", { $toObjectId: "$$sid" }],
+                                    },
+                                },
+                            },
+                            {
+                                $project: {
+                                    first_name: 1,
+                                    last_name: 1,
+                                },
+                            },
+                        ],
+                        as: "seller_info",
                     },
                 },
                 {
