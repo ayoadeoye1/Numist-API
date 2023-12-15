@@ -3,6 +3,8 @@ import {
     addItem,
     availableOff,
     availableOn,
+    chatList,
+    chatMessages,
     getProfile,
     sellerFavourites,
     sellerItem,
@@ -39,5 +41,8 @@ routerTwo.post("/available/off", availableOff);
 routerTwo.get("/favourites", sellerFavourites);
 
 //chat pending
+routerTwo.get("/chat/list", chatList);
+
+routerTwo.get("/chat/messages/:id", chatMessages);
 
 export default routerTwo;

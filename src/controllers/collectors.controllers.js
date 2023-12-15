@@ -412,7 +412,7 @@ export const getItems = async (req, res) => {
     try {
         const ip = req.ip || req.socket.remoteAddress;
         const uinfo = await userInfo(ip); //"212.113.115.165"
-        console.log(uinfo, ip);
+        // console.log(uinfo, ip);
 
         const limit = req.query.limit;
         const page = req.query.page;
@@ -444,30 +444,6 @@ export const getItems = async (req, res) => {
                         // about: 0,
                         delivery_options: 0,
                         password: 0,
-                    },
-                },
-                {
-                    $lookup: {
-                        from: "users",
-                        let: {
-                            sid: "$seller_id",
-                        },
-                        pipeline: [
-                            {
-                                $match: {
-                                    $expr: {
-                                        $eq: ["$_id", { $toObjectId: "$$sid" }],
-                                    },
-                                },
-                            },
-                            {
-                                $project: {
-                                    first_name: 1,
-                                    last_name: 1,
-                                },
-                            },
-                        ],
-                        as: "seller_info",
                     },
                 },
                 {
@@ -515,6 +491,30 @@ export const getItems = async (req, res) => {
                 {
                     $addFields: {
                         convertedCurrency: userPreferredCurrency,
+                    },
+                },
+                {
+                    $lookup: {
+                        from: "users",
+                        let: {
+                            sid: "$seller_id",
+                        },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $eq: ["$_id", { $toObjectId: "$$sid" }],
+                                    },
+                                },
+                            },
+                            {
+                                $project: {
+                                    first_name: 1,
+                                    last_name: 1,
+                                },
+                            },
+                        ],
+                        as: "seller_info",
                     },
                 },
                 {
@@ -1139,6 +1139,98 @@ export const removeFavourite = async (req, res) => {
             null,
             "seller removed to your favourite list"
         );
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const chatList = async (req, res) => {
+    try {
+        const user = req.user;
+        const myRooms = await RoomsModel.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $or: {
+                            $eq: [
+                                "$sender_id",
+                                {
+                                    $toObjectId: user._id,
+                                },
+                            ],
+                            $eq: [
+                                "$receiver_id",
+                                {
+                                    $toObjectId: user._id,
+                                },
+                            ],
+                        },
+                    },
+                },
+            },
+            {
+                $lookup: {
+                    from: "users",
+                    let: { participants: ["$sender_id", "$receiver_id"] },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        {
+                                            $ne: ["$_id", user._id],
+                                        },
+                                        {
+                                            $in: ["$_id", "$$participants"],
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        {
+                            $project: {
+                                _id: 1,
+                                first_name: 1,
+                                last_name: 1,
+                                email: 1,
+                                photo: 1,
+                                country_code: 1,
+                                mobile: 1,
+                            },
+                        },
+                    ],
+                    as: "user_details",
+                },
+            },
+        ]);
+
+        return successResponse(res, 200, myRooms, " chat list fetched");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const chatMessages = async (req, res) => {
+    try {
+        const user = req.user;
+        const room_id = req.params.id;
+
+        const myChats = await MessageModel.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $eq: ["$room_id", room_id],
+                    },
+                },
+            },
+            {
+                $sort: {
+                    createdAt: -1,
+                },
+            },
+        ]);
+
+        return successResponse(res, 200, myChats, "chat messages fetched");
     } catch (error) {
         return serverError(res, 500, null, error.message);
     }

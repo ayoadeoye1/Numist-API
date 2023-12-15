@@ -2,6 +2,8 @@ import express from "express";
 import {
     addFavourite,
     cgetProfile,
+    chatList,
+    chatMessages,
     collectorSignUp,
     cupdateProfile,
     getFavourite,
@@ -67,5 +69,9 @@ routerOne.delete("/collector/rem-fav", removeFavourite);
 routerOne.get("/collector/profile/fetch", cgetProfile);
 
 routerOne.put("/collector/profile/update", cupdateProfile);
+
+routerOne.get("/chat/list", chatList);
+
+routerOne.get("/chat/messages/:id", chatMessages);
 
 export default routerOne;

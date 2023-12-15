@@ -18,7 +18,7 @@ const collectorAuth = async (req, res, next) => {
         if (!authUser || authUser == "jwt expired") {
             return res.status(400).json({
                 status: 400,
-                message: "invalid token",
+                message: "invalid token/expired",
                 data: null,
             });
         }
