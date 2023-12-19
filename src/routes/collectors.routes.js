@@ -15,8 +15,10 @@ import {
     passwordChange,
     passwordChangeCode,
     removeFavourite,
+    sellerCollection,
+    sellerCollections,
     sellerItems,
-    sellerItemsCateg,
+    // sellerItemsCateg,
     signIn,
     verifyEmail,
 } from "../controllers/collectors.controllers.js";
@@ -50,7 +52,11 @@ routerOne.get("/collector/get-seller/:id", getSeller);
 
 routerOne.get("/collector/seller-items/:id", sellerItems);
 
-routerOne.get("/collector/seller-items-categ/:id", sellerItemsCateg);
+// routerOne.get("/collector/seller-items-categ/:id", sellerItemsCateg);
+
+routerOne.get("/collector/seller-collections/:id", sellerCollections);
+
+routerOne.get("/collector/seller-collection/:id", sellerCollection);
 
 //auth endpoint
 // routerOne.post(
@@ -60,6 +66,7 @@ routerOne.get("/collector/seller-items-categ/:id", sellerItemsCateg);
 // );
 
 routerOne.use(collectorAuth);
+
 routerOne.post("/collector/add-fav", addFavourite);
 
 routerOne.get("/collector/get-fav", getFavourite);

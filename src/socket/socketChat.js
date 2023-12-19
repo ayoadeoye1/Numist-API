@@ -62,6 +62,28 @@ const socketChat = async (io) => {
             });
         });
 
+        socket.on("seen status", async (data) => {
+            const { time_seen, room_id } = data;
+
+            const filter = {
+                room_id: room_id,
+                seen_status: false,
+                timestamp: {
+                    $lte: new Date(time_seen),
+                },
+            };
+
+            const update = {
+                $set: {
+                    seen_status: true,
+                },
+            };
+
+            await MessageModel.updateMany(filter, update);
+
+            io.to(room_id).emit("seen status", data);
+        });
+
         socket.on("disconnect", (reason) => {
             console.log(`user disconnected: ${reason}`);
         });

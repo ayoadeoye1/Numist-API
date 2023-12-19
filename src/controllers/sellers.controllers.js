@@ -16,6 +16,9 @@ import { countryToAlpha2, countryToAlpha3 } from "country-to-iso";
 import FavouritesModel from "../models/favourites.model.js";
 import RoomsModel from "../models/rooms.model.js";
 import MessageModel from "../models/message.model.js";
+import CollectionsModels from "../models/collections.models.js";
+import { userInfo } from "../utils/userInfo.js";
+import axios from "axios";
 
 export const sellerSignUp = async (req, res) => {
     try {
@@ -327,18 +330,124 @@ export const updateItem = async (req, res) => {
     }
 };
 
+async function convertCurrency(currency, pcurrency, price) {
+    try {
+        // const xrate = await axios.get(`https://data.fixer.io/api/convert
+        //     ? access_key = ${process.env.FIXER_API_KEY}
+        //     & from = ${currency}
+        //     & to = ${pcurrency}
+        //     & amount = ${price}`);
+
+        // console.log(currency, pcurrency, price);
+
+        const { data } = await axios(
+            `https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/${currency}/${pcurrency}.json`
+        );
+
+        const xrate = Object.values(data);
+
+        return Number(xrate[1]) * price;
+    } catch (error) {
+        console.log(error.message);
+    }
+}
+
 export const sellerItems = async (req, res) => {
     try {
         const user = req.user;
-        const userItems = await ItemsModel.aggregate([
+
+        const ip = req.ip || req.socket.remoteAddress;
+        const uinfo = await userInfo(ip); //"212.113.115.165"
+        // console.log(uinfo, ip);
+
+        const limit = req.query.limit || 20;
+        const page = req.query.page || 1;
+
+        // let country = req?.query.country
+        //     ? req?.query.country
+        //     : uinfo.country_name;
+
+        // let categ = req?.query.category ? req?.query.category : false;
+
+        // country = country?.toLowerCase();
+
+        const userPreferredCurrency = uinfo.currency.toLowerCase();
+
+        // let items = [];
+        // let apage = [];
+
+        const rate = await convertCurrency("usd", userPreferredCurrency, 1);
+
+        const items = await ItemsModel.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $eq: [
+                            "$seller_id",
+                            {
+                                $toObjectId: user._id,
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    convertedPrice: {
+                        $cond: {
+                            if: {
+                                $eq: ["$currency", userPreferredCurrency],
+                            },
+                            then: "$price",
+                            else: {
+                                $multiply: ["$price", rate],
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    convertedCurrency: userPreferredCurrency,
+                },
+            },
+            {
+                $sort: {
+                    createdAt: 1,
+                },
+            },
+            {
+                $skip: (Number(page) - 1) * Number(limit) || 0,
+            },
+            {
+                $limit: Number(limit) || 20,
+            },
+        ]);
+
+        let apage = await ItemsModel.aggregate([
             {
                 $match: {
                     seller_id: user._id,
                 },
             },
+            {
+                $count: "countPage",
+            },
         ]);
 
-        return successResponse(res, 200, userItems, "seller details");
+        return successResponse(
+            res,
+            200,
+            {
+                items: items,
+                page: `${page || 1} of ${Math.ceil(
+                    apage[0]?.countPage / Number(limit)
+                )}`,
+            },
+            "items data"
+        );
+
+        // return successResponse(res, 200, items, "seller items fetched");
     } catch (error) {
         return serverError(res, 500, null, error.message);
     }
@@ -347,10 +456,66 @@ export const sellerItems = async (req, res) => {
 export const sellerItem = async (req, res) => {
     try {
         const user = req.user;
-        const userItem = await ItemsModel.findOne({
-            seller_id: user._id,
-            _id: req.params.id,
-        });
+        const param = req.params;
+        // const userItem = await ItemsModel.findOne({
+        //     seller_id: user._id,
+        //     _id: req.params.id,
+        // });
+
+        const ip = req.ip || req.socket.remoteAddress;
+        const uinfo = await userInfo(ip); //"212.113.115.165"
+        // console.log(uinfo, ip);
+
+        const userPreferredCurrency = uinfo.currency.toLowerCase();
+
+        const rate = await convertCurrency("usd", userPreferredCurrency, 1);
+
+        const userItem = await ItemsModel.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $and: [
+                            {
+                                $eq: [
+                                    "$seller_id",
+                                    {
+                                        $toObjectId: user._id,
+                                    },
+                                ],
+                            },
+                            {
+                                $eq: [
+                                    "$_id",
+                                    {
+                                        $toObjectId: param.id,
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    convertedPrice: {
+                        $cond: {
+                            if: {
+                                $eq: ["$currency", userPreferredCurrency],
+                            },
+                            then: "$price",
+                            else: {
+                                $multiply: ["$price", rate],
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    convertedCurrency: userPreferredCurrency,
+                },
+            },
+        ]);
 
         return successResponse(res, 200, userItem, "seller details");
     } catch (error) {
@@ -408,6 +573,7 @@ export const sellerFavourites = async (req, res) => {
 export const chatList = async (req, res) => {
     try {
         const user = req.user;
+
         const myRooms = await RoomsModel.aggregate([
             {
                 $match: {
@@ -463,6 +629,43 @@ export const chatList = async (req, res) => {
                     as: "user_details",
                 },
             },
+            {
+                //to count unread messages in a chat, from a sender
+                $lookup: {
+                    from: "messages",
+                    let: {
+                        rid: "$room_id",
+                    },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        {
+                                            $eq: ["$room_id", "$$rid"],
+                                        },
+                                        {
+                                            $ne: [
+                                                "$sender_id",
+                                                {
+                                                    $toObjectId: user._id,
+                                                },
+                                            ],
+                                        },
+                                        {
+                                            $eq: ["$seen_status", false],
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        {
+                            $count: "counts",
+                        },
+                    ],
+                    as: "unread_msg",
+                },
+            },
         ]);
 
         return successResponse(res, 200, myRooms, " chat list fetched");
@@ -492,6 +695,209 @@ export const chatMessages = async (req, res) => {
         ]);
 
         return successResponse(res, 200, myChats, "chat messages fetched");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const createCollection = async (req, res) => {
+    try {
+        const user = req.user;
+        const { name, item_id } = req.body;
+
+        if (!name || !item_id) {
+            return invalidRequest(
+                res,
+                400,
+                null,
+                "name and item_id is required"
+            );
+        }
+
+        const checkItem = await ItemsModel.findOne({
+            _id: item_id,
+            seller_id: user._id,
+        });
+
+        if (!checkItem) {
+            return invalidRequest(res, 400, null, "item not found");
+        }
+
+        const newCollection = new CollectionsModels({
+            seller_id: user._id,
+            name: name,
+            items_id: [],
+        });
+
+        await newCollection.items_id.push(item_id);
+
+        await newCollection.save();
+
+        return successResponse(res, 200, null, "collection created");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const fetchCollections = async (req, res) => {
+    try {
+        const sellerId = req.user.id;
+
+        const collection = await CollectionsModels.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $eq: [
+                            "$seller_id",
+                            {
+                                $toObjectId: sellerId,
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                $lookup: {
+                    from: "items",
+                    let: {
+                        iids: "$items_id",
+                    },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $in: [
+                                        {
+                                            $toString: "$_id",
+                                        },
+                                        "$$iids",
+                                    ],
+                                },
+                            },
+                        },
+                        {
+                            $project: {
+                                _id: 1,
+                                seller_id: 1,
+                                name: 1,
+                                description: 1,
+                                photo1: 1,
+                                photo2: 1,
+                            },
+                        },
+                    ],
+                    as: "coll_list",
+                },
+            },
+        ]);
+
+        return successResponse(res, 200, collection, "seller items collection");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const addItemToCollection = async (req, res) => {
+    try {
+        const user = req.user;
+        const collection_id = req.params.id;
+        const { item_id } = req.body;
+
+        if (!item_id || !collection_id) {
+            return invalidRequest(
+                res,
+                400,
+                null,
+                "collection_id and item_id is required"
+            );
+        }
+
+        const checkItem = await ItemsModel.findOne({
+            _id: item_id,
+            seller_id: user._id,
+        });
+
+        if (!checkItem) {
+            return invalidRequest(res, 400, null, "item not found");
+        }
+
+        await CollectionsModels.findOneAndUpdate(
+            {
+                _id: collection_id,
+                seller_id: user._id,
+            },
+            {
+                $push: {
+                    items_id: item_id,
+                },
+            },
+            {
+                new: true,
+            }
+        );
+
+        return successResponse(res, 200, null, "item added to collection");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const remItemFromCollection = async (req, res) => {
+    try {
+        const user = req.user;
+        const collection_id = req.params.id;
+        const { item_id } = req.body;
+
+        if (!item_id || !collection_id) {
+            return invalidRequest(
+                res,
+                400,
+                null,
+                "collection_id and item_id is required"
+            );
+        }
+
+        const checkItem = await ItemsModel.findOne({
+            _id: item_id,
+            seller_id: user._id,
+        });
+
+        if (!checkItem) {
+            return invalidRequest(res, 400, null, "item not found");
+        }
+
+        await CollectionsModels.findOneAndUpdate(
+            {
+                _id: collection_id,
+                seller_id: user._id,
+            },
+            {
+                $pull: {
+                    items_id: item_id,
+                },
+            },
+            {
+                new: true,
+            }
+        );
+
+        return successResponse(res, 200, null, "item removed to collection");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const deleteCollection = async (req, res) => {
+    try {
+        const user = req.user;
+        const colid = req.params.id;
+
+        await CollectionsModels.findOneAndDelete({
+            _id: colid,
+            seller_id: user.id,
+        });
+
+        return successResponse(res, 200, null, "collection deleted");
     } catch (error) {
         return serverError(res, 500, null, error.message);
     }

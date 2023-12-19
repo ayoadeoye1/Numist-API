@@ -1,11 +1,16 @@
 import express from "express";
 import {
     addItem,
+    addItemToCollection,
     availableOff,
     availableOn,
     chatList,
     chatMessages,
+    createCollection,
+    deleteCollection,
+    fetchCollections,
     getProfile,
+    remItemFromCollection,
     sellerFavourites,
     sellerItem,
     sellerItems,
@@ -44,5 +49,15 @@ routerTwo.get("/favourites", sellerFavourites);
 routerTwo.get("/chat/list", chatList);
 
 routerTwo.get("/chat/messages/:id", chatMessages);
+
+routerTwo.post("/collection/create", createCollection);
+
+routerTwo.get("/collection/fetch", fetchCollections);
+
+routerTwo.post("/collection/add-item/:id", addItemToCollection);
+
+routerTwo.post("/collection/rem-item/:id", remItemFromCollection);
+
+routerTwo.delete("/collection/drop/:id", deleteCollection);
 
 export default routerTwo;

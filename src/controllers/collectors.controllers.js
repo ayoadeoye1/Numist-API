@@ -18,6 +18,7 @@ import axios from "axios";
 import { countryToAlpha2 } from "country-to-iso";
 import usersModel from "../models/users.model.js";
 import photoUploader from "../utils/photoUploader.js";
+import CollectionsModels from "../models/collections.models.js";
 
 export const collectorSignUp = async (req, res) => {
     try {
@@ -761,7 +762,7 @@ export const getItem = async (req, res) => {
  */
 export const getSellers = async (req, res) => {
     try {
-        const limit = req.params.limit;
+        const limit = req.params.limit || 20;
         const page = req.params.page;
 
         const ip = req.ip || req.socket.remoteAddress;
@@ -788,7 +789,7 @@ export const getSellers = async (req, res) => {
             },
             {
                 $sort: {
-                    createdAt: -1,
+                    updatedAt: 1,
                 },
             },
             {
@@ -856,9 +857,10 @@ export const getSeller = async (req, res) => {
                         {
                             $project: {
                                 name: 1,
-                                picture1: 1,
-                                picture2: 1,
+                                photo1: 1,
+                                photo2: 1,
                                 description: 1,
+                                price: 1,
                             },
                         },
                         {
@@ -885,6 +887,28 @@ export const sellerItems = async (req, res) => {
     try {
         const seller = req.params.id;
 
+        const ip = req.ip || req.socket.remoteAddress;
+        const uinfo = await userInfo(ip); //"212.113.115.165"
+        // console.log(uinfo, ip);
+
+        const limit = req.query.limit;
+        const page = req.query.page;
+
+        // let country = req?.query.country
+        //     ? req?.query.country
+        //     : uinfo.country_name;
+
+        // let categ = req?.query.category ? req?.query.category : false;
+
+        // country = country?.toLowerCase();
+
+        const userPreferredCurrency = uinfo.currency.toLowerCase();
+
+        // let items = [];
+        // let apage = [];
+
+        const rate = await convertCurrency("usd", userPreferredCurrency, 1);
+
         const items = await ItemsModel.aggregate([
             {
                 $match: {
@@ -896,6 +920,26 @@ export const sellerItems = async (req, res) => {
                             },
                         ],
                     },
+                },
+            },
+            {
+                $addFields: {
+                    convertedPrice: {
+                        $cond: {
+                            if: {
+                                $eq: ["$currency", userPreferredCurrency],
+                            },
+                            then: "$price",
+                            else: {
+                                $multiply: ["$price", rate],
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    convertedCurrency: userPreferredCurrency,
                 },
             },
             {
@@ -904,44 +948,223 @@ export const sellerItems = async (req, res) => {
                 },
             },
             {
-                $limit: 12,
+                $skip: (Number(page) - 1) * Number(limit) || 0,
+            },
+            {
+                $limit: Number(limit) || 20,
             },
         ]);
 
-        return successResponse(res, 200, items, "seller items fetched");
+        let apage = await ItemsModel.aggregate([
+            {
+                $match: {
+                    country: country,
+                    category: categ,
+                },
+            },
+            {
+                $count: "countPage",
+            },
+        ]);
+
+        return successResponse(
+            res,
+            200,
+            {
+                items: items,
+                page: `${page || 1} of ${Math.ceil(
+                    apage[0]?.countPage / Number(limit)
+                )}`,
+            },
+            "items data"
+        );
+
+        // return successResponse(res, 200, items, "seller items fetched");
     } catch (error) {
         return serverError(res, 500, null, error.message);
     }
 };
-export const sellerItemsCateg = async (req, res) => {
-    try {
-        const seller = req.params.id;
+// export const sellerItemsCateg = async (req, res) => {
+//     try {
+//         const seller = req.params.id;
 
-        const items = await ItemsModel.aggregate([
+//         const items = await ItemsModel.aggregate([
+//             {
+//                 $match: {
+//                     $expr: {
+//                         $eq: [
+//                             "$seller_id",
+//                             {
+//                                 $toObjectId: seller,
+//                             },
+//                         ],
+//                     },
+//                 },
+//             },
+//             // {
+//             //     $limit: 4,
+//             // },
+//             {
+//                 $group: {
+//                     _id: "$category",
+//                     data: { $push: "$$ROOT" },
+//                 },
+//             },
+//         ]);
+
+//         return successResponse(res, 200, items, "seller items fetched");
+//     } catch (error) {
+//         return serverError(res, 500, null, error.message);
+//     }
+// };
+
+export const sellerCollections = async (req, res) => {
+    try {
+        const sellerId = req.params.id;
+
+        const collection = await CollectionsModels.aggregate([
             {
                 $match: {
                     $expr: {
                         $eq: [
                             "$seller_id",
                             {
-                                $toObjectId: seller,
+                                $toObjectId: sellerId,
                             },
                         ],
                     },
                 },
             },
-            // {
-            //     $limit: 4,
-            // },
             {
-                $group: {
-                    _id: "$category",
-                    data: { $push: "$$ROOT" },
+                $lookup: {
+                    from: "items",
+                    let: {
+                        iids: "$items_id",
+                    },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $in: [
+                                        {
+                                            $toString: "$_id",
+                                        },
+                                        "$$iids",
+                                    ],
+                                },
+                            },
+                        },
+                        {
+                            $project: {
+                                _id: 1,
+                                seller_id: 1,
+                                name: 1,
+                                description: 1,
+                                photo1: 1,
+                                photo2: 1,
+                            },
+                        },
+                    ],
+                    as: "coll_list",
                 },
             },
         ]);
 
-        return successResponse(res, 200, items, "seller items fetched");
+        return successResponse(res, 200, collection, "seller items collection");
+    } catch (error) {
+        return serverError(res, 500, null, error.message);
+    }
+};
+
+export const sellerCollection = async (req, res) => {
+    try {
+        const sellerId = req.params.id;
+
+        const coll_id = req.query.coll_id;
+
+        const ip = req.ip || req.socket.remoteAddress;
+        const uinfo = await userInfo("212.113.115.165"); //"212.113.115.165"
+        // console.log(uinfo, ip);
+
+        const userPreferredCurrency = uinfo.currency.toLowerCase();
+
+        const rate = await convertCurrency("usd", userPreferredCurrency, 1);
+
+        const collection = await CollectionsModels.aggregate([
+            {
+                $match: {
+                    $expr: {
+                        $and: {
+                            $eq: [
+                                "$seller_id",
+                                {
+                                    $toObjectId: sellerId,
+                                },
+                            ],
+                            $eq: [
+                                "$_id",
+                                {
+                                    $toObjectId: coll_id,
+                                },
+                            ],
+                        },
+                    },
+                },
+            },
+            {
+                $lookup: {
+                    from: "items",
+                    let: {
+                        iids: "$items_id",
+                    },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $in: [
+                                        {
+                                            $toString: "$_id",
+                                        },
+                                        "$$iids",
+                                    ],
+                                },
+                            },
+                        },
+                        {
+                            $addFields: {
+                                convertedPrice: {
+                                    $cond: {
+                                        if: {
+                                            $eq: [
+                                                "$currency",
+                                                userPreferredCurrency,
+                                            ],
+                                        },
+                                        then: "$price",
+                                        else: {
+                                            $multiply: ["$price", rate],
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        {
+                            $addFields: {
+                                convertedCurrency: userPreferredCurrency,
+                            },
+                        },
+                        {
+                            $sort: {
+                                createdAt: -1,
+                            },
+                        },
+                    ],
+                    as: "coll_list",
+                },
+            },
+        ]);
+
+        return successResponse(res, 200, collection, "seller items collection");
     } catch (error) {
         return serverError(res, 500, null, error.message);
     }
